@@ -29,6 +29,8 @@ cp .env.example .env
 - `TELEGRAM_BOT_TOKEN`
 - `BOT_ALLOWED_USER_IDS`
 
+不会创建 Telegram Bot 的话，可先看：[创建并配置 Telegram Bot](docs/telegram-bot-setup.md)
+
 3. 启动：
 
 ```bash
