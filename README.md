@@ -12,9 +12,11 @@
 
 - 支持 Telegram 长轮询启动 Bot
 - 支持 `/start`、`/help`、`/run <command>`
+- 支持 `/config`、`/set_workdir`、`/set_timeout`、`/set_max_output`
 - 支持按 Telegram 用户 ID 做访问控制
 - 支持配置命令执行工作目录
 - 支持执行超时和输出截断
+- 支持通过 Bot 命令热更新并回写部分 `.env` 配置
 
 ## 快速开始
 
@@ -41,8 +43,10 @@ cargo run
 
 ```text
 /help
+/config
 /run pwd
 /run ls -la
+/set_timeout 30
 ```
 
 ## Docker
@@ -84,9 +88,10 @@ src/
 1. 用户在 Telegram 中发送 `/run <command>`
 2. Telegram 平台层接收消息并提取用户 ID、命令文本
 3. 访问控制校验该用户是否在白名单中
-4. `terminal` 层在受控工作目录中执行命令
-5. 收集退出码、标准输出、标准错误
-6. 截断过长输出并回发到 Telegram
+4. 如果是配置命令，则更新运行时设置并写回 `.env`
+5. 如果是执行命令，则 `terminal` 层在受控工作目录中执行命令
+6. 收集退出码、标准输出、标准错误
+7. 截断过长输出并回发到 Telegram
 
 ## 下一步建议
 

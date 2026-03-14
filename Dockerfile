@@ -1,6 +1,6 @@
 FROM rust:1.89-bookworm AS builder
 
-WORKDIR /app
+WORKDIR /workspace
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
@@ -13,10 +13,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY --from=builder /app/target/release/bot-terminal /usr/local/bin/bot-terminal
-
-ENV BOT_WORKDIR=/workspace
+COPY --from=builder /workspace/target/release/bot-terminal /usr/local/bin/bot-terminal
 
 CMD ["bot-terminal"]

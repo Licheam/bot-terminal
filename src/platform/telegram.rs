@@ -6,7 +6,7 @@ use tracing::{error, info};
 
 use crate::{
     config::Config,
-    terminal::{CommandResult, TerminalError, TerminalService},
+    terminal::{CommandResult, RuntimeSettings, TerminalError, TerminalService},
 };
 
 const TELEGRAM_MESSAGE_LIMIT: usize = 3900;
@@ -61,6 +61,47 @@ async fn handle_message(bot: Bot, msg: Message, terminal: Arc<TerminalService>) 
 
     let reply = match request {
         BotRequest::Help => build_help_text(terminal.as_ref()),
+        BotRequest::ShowConfig => {
+            let Some(user) = msg.from.as_ref() else {
+                return Ok(());
+            };
+
+            if !terminal.is_user_allowed(user.id.0) {
+                format_command_error(TerminalError::Unauthorized)
+            } else {
+                format_runtime_settings(terminal.current_settings())
+            }
+        }
+        BotRequest::SetWorkdir(path) => {
+            let Some(user) = msg.from.as_ref() else {
+                return Ok(());
+            };
+
+            match terminal.update_workdir_for_user(user.id.0, &path) {
+                Ok(settings) => format_setting_updated("BOT_WORKDIR", settings),
+                Err(err) => format_command_error(err),
+            }
+        }
+        BotRequest::SetTimeout(seconds) => {
+            let Some(user) = msg.from.as_ref() else {
+                return Ok(());
+            };
+
+            match terminal.update_timeout_for_user(user.id.0, &seconds) {
+                Ok(settings) => format_setting_updated("BOT_COMMAND_TIMEOUT_SECS", settings),
+                Err(err) => format_command_error(err),
+            }
+        }
+        BotRequest::SetMaxOutput(chars) => {
+            let Some(user) = msg.from.as_ref() else {
+                return Ok(());
+            };
+
+            match terminal.update_max_output_for_user(user.id.0, &chars) {
+                Ok(settings) => format_setting_updated("BOT_MAX_OUTPUT_CHARS", settings),
+                Err(err) => format_command_error(err),
+            }
+        }
         BotRequest::Run(command) => {
             let Some(user) = msg.from.as_ref() else {
                 return Ok(());
@@ -82,6 +123,10 @@ async fn handle_message(bot: Bot, msg: Message, terminal: Arc<TerminalService>) 
 
 enum BotRequest {
     Help,
+    ShowConfig,
+    SetWorkdir(String),
+    SetTimeout(String),
+    SetMaxOutput(String),
     Run(String),
     Ignore,
 }
@@ -103,27 +148,39 @@ fn parse_request(text: &str) -> BotRequest {
 
     match normalized_head {
         "/start" | "/help" => BotRequest::Help,
+        "/config" => BotRequest::ShowConfig,
+        "/set_workdir" => BotRequest::SetWorkdir(tail.to_owned()),
+        "/set_timeout" => BotRequest::SetTimeout(tail.to_owned()),
+        "/set_max_output" => BotRequest::SetMaxOutput(tail.to_owned()),
         "/run" => BotRequest::Run(tail.to_owned()),
         _ => BotRequest::Ignore,
     }
 }
 
 fn build_help_text(terminal: &TerminalService) -> String {
+    let working_dir = terminal.working_dir();
+
     format!(
         concat!(
             "bot-terminal\n\n",
             "Commands:\n",
             "/help - show this message\n",
+            "/config - show current runtime settings\n",
             "/run <command> - execute a shell command\n\n",
+            "/set_workdir <path> - update BOT_WORKDIR\n",
+            "/set_timeout <seconds> - update BOT_COMMAND_TIMEOUT_SECS\n",
+            "/set_max_output <chars> - update BOT_MAX_OUTPUT_CHARS\n\n",
             "Current limits:\n",
             "- workdir: {}\n",
             "- timeout: {} seconds\n",
+            "- max output chars: {}\n",
             "- allowed users: {}\n\n",
             "Example:\n",
             "/run pwd"
         ),
-        terminal.working_dir().display(),
+        working_dir.display(),
         terminal.timeout().as_secs(),
+        terminal.max_output_chars(),
         terminal.authorized_user_count()
     )
 }
@@ -163,7 +220,39 @@ fn format_command_error(error: TerminalError) -> String {
         }
         TerminalError::Spawn(err) => format!("failed to start command: {err}"),
         TerminalError::Wait(err) => format!("failed while waiting for command: {err}"),
+        TerminalError::InvalidSetting(message) => message,
+        TerminalError::Persist(message) => message,
     }
+}
+
+fn format_runtime_settings(settings: RuntimeSettings) -> String {
+    format!(
+        concat!(
+            "Current runtime settings:\n",
+            "- BOT_WORKDIR={}\n",
+            "- BOT_COMMAND_TIMEOUT_SECS={}\n",
+            "- BOT_MAX_OUTPUT_CHARS={}"
+        ),
+        settings.working_dir.display(),
+        settings.timeout.as_secs(),
+        settings.max_output_chars
+    )
+}
+
+fn format_setting_updated(key: &str, settings: RuntimeSettings) -> String {
+    format!(
+        concat!(
+            "{} updated successfully.\n\n",
+            "Current runtime settings:\n",
+            "- BOT_WORKDIR={}\n",
+            "- BOT_COMMAND_TIMEOUT_SECS={}\n",
+            "- BOT_MAX_OUTPUT_CHARS={}"
+        ),
+        key,
+        settings.working_dir.display(),
+        settings.timeout.as_secs(),
+        settings.max_output_chars
+    )
 }
 
 fn truncate_chars(text: &str, limit: usize) -> String {
